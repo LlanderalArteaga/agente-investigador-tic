@@ -29,10 +29,12 @@ Cambios principales:
 python -m venv .venv
 .venv\Scripts\activate
 pip install -r requirements.txt
-python app.py
+vercel env run -- python app.py
 ```
 
-Configura antes tu API Key en `config.py`.
+Antes, vincula el directorio con `vercel link` y configura `OPENAI_API_KEY` en Vercel para los entornos Development, Preview y/o Production que uses. En el dashboard: Project → Settings → Environment Variables. Después de cambiar una variable en Vercel, vuelve a desplegar.
+
+`config.py` lee la clave desde el entorno y no contiene secretos.
 
 ## V5 - Corrección de alineación
 
