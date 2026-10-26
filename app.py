@@ -1,4 +1,5 @@
 import json
+import re
 
 from flask import Flask, Response, render_template, request, stream_with_context
 from openai import OpenAI
@@ -69,6 +70,68 @@ def emitir_fuentes_desde_accion(accion, urls_emitidas):
                 "url": url,
                 "origen": "search"
             })
+
+    return nuevas_fuentes
+
+
+def crear_fuente(url, titulo, origen, urls_emitidas):
+    if not url or url in urls_emitidas:
+        return None
+
+    urls_emitidas.add(url)
+    return {
+        "titulo": titulo or url,
+        "url": url,
+        "origen": origen
+    }
+
+
+def emitir_citas_de_respuesta(respuesta, urls_emitidas):
+    """Recupera citas desde el objeto completo de respuesta de Responses API."""
+    nuevas_fuentes = []
+
+    for item in obtener_valor(respuesta, "output", []) or []:
+        for parte in obtener_valor(item, "content", []) or []:
+            for anotacion in obtener_valor(parte, "annotations", []) or []:
+                if obtener_valor(anotacion, "type") != "url_citation":
+                    continue
+
+                fuente = crear_fuente(
+                    obtener_valor(anotacion, "url"),
+                    obtener_valor(anotacion, "title"),
+                    "cita",
+                    urls_emitidas
+                )
+
+                if fuente:
+                    nuevas_fuentes.append(fuente)
+
+    return nuevas_fuentes
+
+
+def emitir_fuentes_del_reporte(reporte, urls_emitidas):
+    """Usa las URLs explícitas de los hallazgos como respaldo de las citas."""
+    nuevas_fuentes = []
+    bloques = re.split(r"(?=^###\s+Hallazgo\s+\d+)", reporte, flags=re.MULTILINE | re.IGNORECASE)
+
+    for bloque in bloques:
+        fuente_match = re.search(r"^\*\*Fuente:\*\*\s*(.+?)\s*$", bloque, re.MULTILINE | re.IGNORECASE)
+        url_line = re.search(r"^\*\*URL:\*\*\s*(.+?)\s*$", bloque, re.MULTILINE | re.IGNORECASE)
+
+        if not url_line:
+            continue
+
+        url_match = re.search(r"https?://[^\s)\]]+", url_line.group(1), re.IGNORECASE)
+
+        if not url_match:
+            continue
+
+        url = url_match.group(0).rstrip(".,;)")
+        titulo = fuente_match.group(1).strip() if fuente_match else url
+        fuente = crear_fuente(url, titulo, "reporte", urls_emitidas)
+
+        if fuente:
+            nuevas_fuentes.append(fuente)
 
     return nuevas_fuentes
 
@@ -343,6 +406,20 @@ Debes incluir al menos 3 filas cuando la pregunta lo permita.
                     )
 
                 elif tipo == "response.completed":
+                    respuesta_completa = obtener_valor(event, "response", event)
+
+                    for fuente in emitir_citas_de_respuesta(
+                        respuesta_completa,
+                        urls_emitidas
+                    ):
+                        yield sse("fuente", fuente)
+
+                    for fuente in emitir_fuentes_del_reporte(
+                        "".join(reporte_acumulado),
+                        urls_emitidas
+                    ):
+                        yield sse("fuente", fuente)
+
                     yield sse(
                         "completado",
                         {
