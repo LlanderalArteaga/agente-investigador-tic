@@ -2082,8 +2082,12 @@ body {
 }
 
 .footer {
-    color: #687873 !important;
+    color: #ffffff !important;
     border-color: #202b31;
+}
+
+.footer .text-muted {
+    color: #ffffff !important;
 }
 
 @media (max-width: 991.98px) {
